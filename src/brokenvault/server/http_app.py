@@ -245,3 +245,10 @@ class BVServer(ThreadingHTTPServer):
         super().__init__(address, Handler)
         self.app = app
         self.verbose = verbose
+
+    def handle_error(self, request, client_address):
+        """A client that drops its connection is normal; log anything else in one line."""
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionError, TimeoutError)):
+            return
+        sys.stderr.write(f"connection error from {client_address}: {type(exc).__name__}: {exc}\n")

@@ -1,0 +1,2 @@
+# Test dependency only. Exact versions of pytest and its dependencies are in requirements-dev.lock.
+pytest>=8,<10
