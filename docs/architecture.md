@@ -1,113 +1,78 @@
-# BrokenVault architecture
+# Architecture Note
 
-A condensed design note. The full design is in [`LLD.md`](../LLD.md); requirements are in [`PRD_1.md`](../PRD_1.md).
+Short design note for BrokenVault. The full design is in [`LLD.md`](../LLD.md); requirements are in [`PRD_1.md`](../PRD_1.md).
 
-## 1. Decisions
+## Main parts
 
-| # | Decision | Reason |
-|---|---|---|
-| D1 | Fixed-size chunks, 512 KiB by default, size recorded in the manifest | Simple and repeatable; inside the suggested 256 KiB to 1 MiB range |
-| D2 | Chunk ID = SHA-256 of the original bytes; the server recomputes it before accepting | The server is the authority, never the client |
-| D3 | A chunk "exists" when its file exists on disk | A deleted or altered chunk is always visible to `verify` and to later backups |
-| D4 | SQLite (WAL, `synchronous=FULL`) for metadata | Atomic multi-row commit that survives a restart |
-| D5 | `uploads` and `versions` are separate tables; a version row is written only inside the commit transaction | Unfinished work is structurally invisible to `list` and `restore` |
-| D6 | Resume by upload ID: kept in SQLite by the server and in a state file by the client; `POST /uploads` with an identical manifest returns the open upload | The client returns to the same upload after any restart |
-| D7 | Chunk write path: temp file, hash check, fsync, atomic rename | A partly written chunk is never readable as a chunk |
-| D8 | Commit re-reads and re-hashes every distinct chunk the version needs, then inserts the version in one transaction | "Complete" means every chunk exists and passed a hash check, including chunks reused from older versions |
-| D9 | Uploaded bytes come from an `upload_chunks` intent row inserted before the rename | Bytes are counted exactly once across crashes and resumes |
-| D10 | HTTP/1.1, JSON control messages, raw chunk bodies | Easy to inspect with `curl`; no dependencies |
+**Client (`bv`, `src/brokenvault/client`)** scans the folder, splits files into chunks, builds the file list, asks the server what is missing, sends those chunks, asks for the commit, and restores versions. It keeps one small state file per folder and server with the open upload ID.
 
-The server never deletes, overwrites or repairs a chunk file.
+**Server (`bv-server`, `src/brokenvault/server`)** validates everything it receives, stores chunks, records uploads and versions, completes versions, serves chunks for restore, and runs `verify`. It never trusts a hash, size or path from the client.
 
-## 2. Components
+They talk over HTTP/1.1 (JSON control messages, raw chunk bodies). Shared code (`common/`) holds path validation, manifest validation, hashing and error codes.
 
 ```
-Client (bv)                                   Server (bv-server)
+Client                                        Server
   cli.py        argparse, exit codes            http_app.py        router + thin handlers
   scanner.py    walk, stat, build manifest      upload_service.py  create, missing, put_chunk, commit
   chunker.py    fixed-size streaming chunks     version_service.py list, manifest of a version
   backup.py     BackupRunner, state file        verify_service.py  damage scan + impact
-  restore.py    Restorer, hash check            chunk_store.py     chunks/ab/<hash>, tmp/, atomic put
+  restore.py    Restorer, hash check            chunk_store.py     chunk files, atomic put
   transport.py  HTTP, retries, error mapping    db.py              SQLite schema, transactions
   output.py     human and JSON output           faults.py          test-only crash points
-                         \                          /
-                          common/: constants, hashing, paths, manifest, errors
 ```
 
-Backup flow:
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant S as Server
-    C->>C: scan folder, chunk, hash, build manifest
-    C->>S: POST /v1/uploads (manifest), or GET /v1/uploads/{stored id} when resuming
-    S-->>C: upload_id, resumed?, state=OPEN
-    C->>S: GET /v1/uploads/{id}/missing
-    S-->>C: chunk IDs + sizes absent on disk
-    loop each missing chunk
-        C->>S: PUT /v1/chunks/{hash}?upload_id=id (raw bytes)
-        S-->>C: 201 stored | 200 already present
-    end
-    C->>S: POST /v1/uploads/{id}/commit
-    S->>S: every chunk exists + re-hash
-    S->>S: one SQLite transaction: version + entries
-    S-->>C: version_id, total, uploaded, reused
-```
-
-On disk:
+**Stored data** lives in the server's data directory:
 
 ```
 <data-dir>/
-  meta.db            SQLite (+ -wal, -shm)
-  chunks/ab/ab12…    one file per distinct hash, raw bytes only
-  tmp/<uuid>.part    in-flight writes, deleted at startup
+  meta.db            SQLite (WAL, synchronous=FULL): uploads, versions, entries, chunk references
+  chunks/ab/ab12…    one file per distinct chunk hash, raw bytes only
+  tmp/<uuid>.part    in-flight chunk writes, deleted at startup
 ```
 
-## 3. Metadata schema
+## File list and chunks
 
-```sql
-uploads(upload_id PK, manifest_id, manifest_json, state OPEN|COMMITTED|ABORTED,
-        total_bytes, created_at, version_id)
-  UNIQUE INDEX (manifest_id) WHERE state = 'OPEN'     -- one open upload per content
-upload_chunks(upload_id, chunk_id, size, PK(upload_id, chunk_id))   -- newly accepted chunks
-versions(version_id PK AUTOINCREMENT, upload_id UNIQUE, created_at, root_name, chunker_size,
-         total_bytes, uploaded_bytes, reused_bytes, file_count, dir_count)  -- completed only
-entries(version_id, path, type file|dir, size, mtime_ns, PK(version_id, path))
-entry_chunks(version_id, path, idx, chunk_id, size, PK(version_id, path, idx))
-  INDEX (chunk_id)                                   -- damage impact lookup
-```
+- **Recorded for a version:** for every item its relative path (with `/`), type (`file` or `dir`), modification time in nanoseconds; for files also the size and the ordered list of chunk IDs with sizes. Every folder has an entry, including empty ones. Empty files have zero chunks. The chunk size is recorded too.
+- **Splitting:** fixed-size chunks of 512 KiB (configurable with `--chunk-size`), read as a stream; only the last chunk of a file may be shorter. The same bytes always give the same chunks.
+- **Chunk ID:** lowercase hex SHA-256 of the chunk's original bytes. The server recomputes it before a chunk becomes visible.
+- **One copy per hash:** a chunk is stored as `chunks/<first 2 hex>/<hash>`. "The server has the chunk" means that file exists. A `PUT` for an existing file stores nothing and answers `200 stored:false`. New chunks are written to `tmp/`, hash-checked, fsynced, then atomically renamed, under a per-hash lock. An existing chunk file is never overwritten or deleted.
+- **Paths:** one validator used by both sides rejects absolute paths, drive prefixes, `..`, `.`, empty segments, backslashes and duplicates. The server also checks that chunk sizes add up to the file size.
 
-Version IDs are `V1`, `V2`, … assigned at commit, so an unfinished upload consumes none.
+## Safe completion
 
-## 4. Upload service
+- **Unfinished upload:** a row in the `uploads` table with state `OPEN`, holding the file list. Completed versions live in separate tables (`versions`, `entries`, `entry_chunks`).
+- **What keeps it hidden:** `list` and `restore` read only the `versions` tables, and rows are written there only by commit. Commit first checks every distinct chunk the version needs: the file must exist, have the right size and hash to its ID (also for chunks reused from older versions). A missing chunk gives `INCOMPLETE_UPLOAD`, a damaged one gives `CORRUPT_CHUNK`; in both cases nothing changes and the upload stays `OPEN`. If all pass, one SQLite transaction inserts the version, its entries and chunk references and marks the upload `COMMITTED`. There is no state in between. Version IDs (`V1`, `V2`, …) are assigned in that transaction.
 
-- **create_upload**: validate the manifest (paths, sizes, chunk rules), compute `manifest_id` from the canonical JSON; return the existing `OPEN` upload for that ID or insert a new one.
-- **missing**: for each distinct chunk of the manifest, list it when its file is absent. A present but damaged file is not listed and is never overwritten.
-- **put_chunk**: check the chunk belongs to the upload and the length matches; if the file exists, reply `200 stored:false` and count nothing; otherwise stage to `tmp/` with a hash check and fsync, commit the `upload_chunks` intent row, then rename into place.
-- **commit**: if already committed, return the same version (idempotent). Otherwise check every distinct chunk: absent gives `409 INCOMPLETE_UPLOAD` with the missing IDs; wrong size or hash gives `422 CORRUPT_CHUNK`. In both cases the upload stays `OPEN` and nothing is changed. When all pass, one `BEGIN IMMEDIATE` transaction inserts the version, its entries and chunk references, and marks the upload `COMMITTED`.
-- `uploaded_bytes = SUM(upload_chunks.size)`; `reused_bytes = total_bytes − uploaded_bytes`.
+## Continue after a stop
 
-Verify walks every distinct chunk referenced by `entry_chunks`, classifies it as `MISSING` or `CORRUPT` (size or hash), and uses the `chunk_id` index to list each version and file path that needs it. It writes nothing.
+- **Same upload:** the server keeps the upload ID in SQLite; the client keeps it in a state file written before any chunk is sent, prints it, and accepts `--resume <id>`. On the next run the client checks that the upload is still `OPEN` and describes the same file list (same manifest ID). If the state file is lost, creating an upload with an identical file list returns the existing open upload.
+- **What is missing:** `GET /v1/uploads/{id}/missing` lists the chunks of that upload whose files are absent on disk. Only those are sent.
+- **Repeated requests:** create-upload returns the same open upload; a repeated chunk is not stored or counted again; a repeated commit returns the same version ID.
+- **Byte counting:** before the rename, the server commits a row `(upload, chunk, size)`. Uploaded chunk bytes are the sum of those rows, so each newly accepted chunk counts exactly once whatever the crash point.
 
-Restore validates the version's manifest again on the client, requires an empty or absent destination, resolves each path with `safe_join`, checks every chunk's size and hash as it is read, compares the final file size, then sets file mtimes and finally directory mtimes, deepest first.
-
-## 5. Crash safety
-
-| Crash point | Durable state afterwards | Result on retry |
+| Crash point | State afterwards | On retry |
 |---|---|---|
-| Client dies mid-upload | Stored chunks; upload `OPEN` | Same command resumes by upload ID; `missing` excludes stored chunks |
-| Server dies while writing a chunk | Orphan `tmp/*.part`; no chunk file | tmp cleaned at startup; chunk is re-sent |
-| Server dies after the hash check, before the intent row | Nothing durable | Re-sent, counted once |
-| Server dies after the intent row, before the rename | Intent row, no chunk file | Listed missing, re-sent; the row already exists, so counted once |
-| Server dies after the rename, before the response | Chunk file + intent row | Retry gets `200 stored:false`; not counted again |
-| Server dies during commit re-hash | Nothing changed | Commit retried |
-| Server dies inside the commit transaction | SQLite rolls back: no version rows | Upload still `OPEN`; commit retried |
-| Server dies after commit, before the response | Version exists, upload `COMMITTED` | A retried commit returns the same version ID |
-| Power loss | Chunk data fsynced before rename; DB `synchronous=FULL` | Same as above |
+| Client dies mid-upload | Stored chunks; upload `OPEN` | Same command resumes; stored chunks are skipped |
+| Server dies while writing a chunk | Orphan temp file, no chunk file | Temp cleaned at startup; chunk re-sent |
+| Server dies after the count row, before the rename | Row, no chunk file | Chunk re-sent; row already exists, counted once |
+| Server dies after the rename, before the reply | Chunk file and row | Retry gets `stored:false`; not counted again |
+| Server dies inside the commit transaction | SQLite rolls back; no version | Upload still `OPEN`; commit retried |
+| Server dies after commit, before the reply | Version exists | Repeated commit returns the same version ID |
 
-Four of these points can be forced in tests with the server variable `BV_FAULT` (`crash_after_chunks=N`, `crash_before_rename`, `crash_before_commit_tx`, `crash_after_commit_tx`); the client flag `--stop-after-chunks N` simulates an interrupt. Both are off by default.
+## Restore and verification
 
-## 6. HTTP handling
+- **Rebuilding:** the client fetches the version's file list, validates it again, and requires an empty or absent destination. It creates folders (parents first), then writes each file chunk by chunk in the recorded order. Each path is resolved and must stay inside the destination.
+- **Hash checks:** on upload (server, before the rename), at commit (server, every needed chunk), on restore (client, every chunk's size and hash as it is read, then the final file size), and in `verify`. A bad or missing chunk stops the restore with the file path and chunk ID; it never reports success.
+- **Modification times:** set on each file after writing, then on folders, deepest first, because writing a child changes its parent's time.
+- **Damage report:** `verify` runs on the server. It checks every distinct chunk referenced by a completed version (exists, size, hash), marks it `MISSING` or `CORRUPT`, and uses an index on chunk ID to list every version and file path that uses it. It writes nothing and repairs nothing. Exit code 2 when damage is found.
 
-`ThreadingHTTPServer` with keep-alive. Chunk `PUT` needs `Content-Length` (411 otherwise) and at most 4 MiB (413 otherwise). When a handler fails before it has read the whole body, the server drains the rest (bounded by 4 MiB) or answers with `Connection: close`, so leftover bytes are never parsed as the next request. Errors are JSON: `{"error": {"code", "message", "details"}}`.
+## Important choices and limits
+
+- **Fixed-size chunks** are simple and repeatable and reuse well after in-place edits and appends. Bytes inserted in the middle of a file shift later chunks, which are then sent again. Content-defined chunking is not implemented.
+- **File existence as the source of truth** makes deleted or altered chunks visible to `verify` and later backups, at the cost of a file-system check per chunk.
+- **Full re-hash at commit** costs one more read of the version's data, in exchange for the guarantee that a completed version passed a hash check. `--fast-commit` on the server skips re-hashing chunks received by the same upload.
+- **No repair, no deletion:** a backup that needs a damaged stored chunk is refused until the operator deals with that file. There is no garbage collection; chunks of abandoned uploads stay.
+- **Sequential uploads, one backup at a time, one user, no authentication.**
+- **Standard library only** (Python `http.server`, `sqlite3`): nothing to install, but the server is not built for many clients.
+- A failed restore leaves a partial destination. Symlinks and special files are skipped; permissions are not saved.
+- Test hooks, off by default: server variable `BV_FAULT` (four crash points) and client flag `--stop-after-chunks N`.

@@ -5,18 +5,22 @@ A client-server backup system for one folder tree. The client splits files into 
 ## Team
 
 - **Team name:** _TODO: fill in before submission_
-- **Members:** _TODO: fill in before submission_
+- Member 1: _TODO_
+- Member 2: _TODO_
+- Member 3: _TODO_
+- Member 4: _TODO_
 
-## Supported system
+## Supported setup
 
-- **Tested on:** Windows 11, Python 3.11.
+- **Operating system:** Windows 11 (tested).
+- **Language:** Python 3.11 or newer.
+- **Required tools:** Python with `pip`; `pytest` for the tests. No Docker needed.
 - The code uses only portable standard-library calls and POSIX-specific steps (directory fsync) are guarded, so Linux and macOS are expected to work, but they were not tested.
 - Client and server are separate programs that talk over HTTP (loopback by default). No internet or paid service is needed after setup.
 
-## Prerequisites and install
+## Install
 
-- Python 3.11 or newer.
-- `pytest` for the tests. The client and server need nothing beyond the standard library.
+The client and server need nothing beyond the standard library; `pytest` is only for the tests.
 
 ```bash
 python -m venv .venv
@@ -27,7 +31,17 @@ pip install -r requirements-dev.lock   # pytest, pinned (only needed for the tes
 
 Without `pip install -e .`, set `PYTHONPATH=src` and use the `python -m ...` forms below.
 
+## Start the complete system
+
+```bash
+python -m brokenvault.server --data-dir ./vault --port 8765
+```
+
+The server is the only long-running part. Run the client commands below in a second terminal.
+
 ## Commands
+
+Back up a folder, list completed versions, restore a version, verify stored data:
 
 ```
 python -m brokenvault.server --data-dir ./vault --port 8765   # start the system   (make server)
@@ -101,7 +115,7 @@ error [CORRUPT_CHUNK]: backup of './b' cannot complete: stored chunk(s) 3fa9… 
   next: run `bv verify` to see every version and file affected; nothing was repaired or deleted
 ```
 
-## Tests
+## Run tests
 
 ```bash
 pytest -q
@@ -111,13 +125,21 @@ One command runs the unit tests and the integration scenarios T1 to T19 from `LL
 
 The 1 GB scenario (T20) is excluded by default: `pytest -q -m slow` (set `BV_SLOW_MB=256` for a smaller dataset).
 
-## Demo
+## Demo steps
+
+Automated, on a small generated dataset, with a check after each step (`--keep` leaves `./demo-work` for inspection):
 
 ```bash
 python scripts/demo.py
 ```
 
-Runs the full flow on a small generated dataset and checks each step: backup, change, interrupt, restart, restore, damage and verify. `--keep` leaves `./demo-work` for inspection.
+By hand, with the organisers' sample (`brokenvault_sample_v1.zip` and `brokenvault_sample_v2.zip`, each extracted into its own folder) or any two states of a folder:
+
+1. Start the server. Back up version 1: `bv backup ./brokenvault_sample_v1`. Uploaded bytes equal the total.
+2. Back up version 2 and show reused and uploaded bytes: `bv backup ./brokenvault_sample_v2`, then `bv list`. On the sample, V2 has 36,194,728 total bytes and uploads 524,347.
+3. Interrupt another upload: `bv backup <changed folder> --stop-after-chunks 2` (or Ctrl-C). `bv list` shows no new version; `bv status <upload-id>` shows UNFINISHED. Stop the server and start it again.
+4. Continue, complete and restore: run the same `bv backup` command again; it continues the same upload ID. Then `bv restore V1 ./out1`, `bv restore V2 ./out2`, and compare each folder with its source.
+5. Change one byte of a file under `vault/chunks/`, delete another chunk file, and run `bv verify`. It lists each damaged chunk with every version and file path, repairs nothing, and exits with code 2.
 
 ## Design
 

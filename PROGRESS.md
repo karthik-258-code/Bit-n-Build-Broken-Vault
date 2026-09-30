@@ -51,3 +51,5 @@ Source documents: `LLD.md` (how), `PRD_1.md` (what). The original brief PDF is n
 - T20 measures client memory with `tracemalloc` (backup and restore run in-process). Server memory is not measured; the server streams 64 KiB blocks by design.
 - The server swallows `ConnectionError` from clients that drop a connection instead of printing a stack trace.
 - README team name and members are left as TODO; they are not in the design documents.
+- Brief PDF (`Participants_guide/`) read after the build: no conflict with the PRD or LLD found. README and `docs/architecture.md` now follow the organisers' templates. `Participants_guide/` is git-ignored (70 MB of sample ZIPs).
+- Organisers' sample check: V1 uploads 36,194,669 of 36,194,669 bytes; V2 uploads 524,347 of 36,194,728; both restores match their sources; verify healthy.

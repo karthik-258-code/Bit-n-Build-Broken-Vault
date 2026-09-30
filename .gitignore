@@ -26,3 +26,6 @@ restored*/
 .vscode/
 .idea/
 *.zip
+
+# Organiser material (70 MB sample datasets); not part of the submission
+Participants_guide/
