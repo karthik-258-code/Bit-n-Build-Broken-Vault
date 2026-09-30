@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Environments
+.venv/
+venv/
+
+# Generated backup data and demo output
+vault/
+demo-work/
+restored*/
+*.db
+*.db-wal
+*.db-shm
+*.part
+
+# Local state, secrets, editor files
+.brokenvault/
+.env
+.claude/
+.vscode/
+.idea/
+*.zip
