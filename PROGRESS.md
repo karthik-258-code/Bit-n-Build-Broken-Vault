@@ -26,8 +26,8 @@ Source documents: `LLD.md` (how), `PRD_1.md` (what). The original brief PDF is n
 ## Build blocks (PRD section 16)
 
 - [x] 1. common/, scanner, chunker, unit tests (AC-1.x)
-- [ ] 2. Server: chunk store, DB, create upload, missing, put chunk (AC-2.x)
-- [ ] 3. Commit, list, atomic completion (AC-3.x)
+- [x] 2. Server: chunk store, DB, create upload, missing, put chunk (AC-2.x)
+- [x] 3. Commit, list, atomic completion (AC-3.x)
 - [ ] 4. Client backup flow with retries and resume (AC-4.x)
 - [ ] 5. Restore (AC-5.x)
 - [ ] 6. Verify (AC-6.x)
@@ -39,3 +39,7 @@ Source documents: `LLD.md` (how), `PRD_1.md` (what). The original brief PDF is n
 - The repository root is this folder (LLD section 3 calls it `brokenvault/`).
 - The manifest is handled as a validated plain dict; a small dataclass (`ManifestInfo`) carries the derived values.
 - Scanner uses `os.lstat()` instead of `DirEntry.stat()`: on Windows the cached directory-listing mtime can be stale, which made two scans of the same folder differ (it would break resume by manifest ID).
+- Blocks 2 and 3 share one commit: `upload_service.py` holds put-chunk and commit together. Both blocks were tested over raw HTTP before the client existed (T4, T6, T9, T10, T17).
+- `ChunkStore.publish()` checks for an existing file under the per-hash lock and discards the temp file instead of calling `os.replace` over it. This enforces "uploads never overwrite an existing chunk file" even for concurrent puts.
+- Verify report adds `detail`, `affected` (version + path per damaged chunk) and `repaired: 0` to the LLD 5.7 shape. Upload status adds `chunks_needed` / `chunks_stored` for `bv status`.
+- Extra transport codes beyond LLD section 7: `BAD_REQUEST`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `LENGTH_REQUIRED`, `PAYLOAD_TOO_LARGE`, `CLIENT_ABORTED`, `INTERNAL`, `RESTORE_CHUNK_INVALID`, `RESTORE_SIZE_MISMATCH`.
