@@ -270,7 +270,7 @@ Each row states the brief's wording first, then the choice that follows it.
 
 | # | Brief says | Choice |
 |---|---|---|
-| A1 | "Any repeatable chunking method is valid. A size of 256 KiB to 1 MiB is a suggestion, not a rule." | Fixed-size chunks of 512 KiB, inside the suggested range; size is configurable and recorded in the file list. |
+| A1 | "Any repeatable chunking method is valid. A size of 256 KiB to 1 MiB is a suggestion, not a rule." | Fixed-size chunks of 256 KiB, the low end of the suggested range (fewer bytes re-sent after a small edit); size is configurable and recorded in the file list. |
 | A2 | "The server may choose the format of upload and version IDs." | Version IDs are sequential (`V1`, `V2`, …), assigned at completion, so unfinished uploads consume none. |
 | A3 | "The upload ID must survive a restart so the client can continue the same upload." / "The client returns to the same unfinished upload and asks what is still missing." | Resume is by upload ID. The server stores it in its database; the client stores it in a local state file keyed by folder and server, prints it, and accepts `--resume <id>`. As a safety net, create-upload with an identical file list while an open upload exists returns that upload, so a crash between the server's reply and the client's save loses nothing. |
 | A4 | Reports "uploaded chunk bytes" (original bytes of newly accepted chunks) and "reused bytes" without defining the latter. | `reused bytes = total folder bytes − uploaded chunk bytes` (includes duplicates within the same version). |

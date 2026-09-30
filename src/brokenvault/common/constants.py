@@ -3,7 +3,7 @@
 import re
 
 API_PREFIX = "/v1"
-DEFAULT_CHUNK_SIZE = 512 * 1024
+DEFAULT_CHUNK_SIZE = 256 * 1024
 MAX_CHUNK_SIZE = 4 * 1024 * 1024  # server rejects larger chunk bodies
 MAX_MANIFEST_BYTES = 64 * 1024 * 1024
 IO_BLOCK = 64 * 1024  # streaming block size

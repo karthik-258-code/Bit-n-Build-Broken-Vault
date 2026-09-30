@@ -33,7 +33,7 @@ Client                                        Server
 ## File list and chunks
 
 - **Recorded for a version:** for every item its relative path (with `/`), type (`file` or `dir`), modification time in nanoseconds; for files also the size and the ordered list of chunk IDs with sizes. Every folder has an entry, including empty ones. Empty files have zero chunks. The chunk size is recorded too.
-- **Splitting:** fixed-size chunks of 512 KiB (configurable with `--chunk-size`), read as a stream; only the last chunk of a file may be shorter. The same bytes always give the same chunks.
+- **Splitting:** fixed-size chunks of 256 KiB (configurable with `--chunk-size`), read as a stream; only the last chunk of a file may be shorter. The same bytes always give the same chunks.
 - **Chunk ID:** lowercase hex SHA-256 of the chunk's original bytes. The server recomputes it before a chunk becomes visible.
 - **One copy per hash:** a chunk is stored as `chunks/<first 2 hex>/<hash>`. "The server has the chunk" means that file exists. A `PUT` for an existing file stores nothing and answers `200 stored:false`. New chunks are written to `tmp/`, hash-checked, fsynced, then atomically renamed, under a per-hash lock. An existing chunk file is never overwritten or deleted.
 - **Paths:** one validator used by both sides rejects absolute paths, drive prefixes, `..`, `.`, empty segments, backslashes and duplicates. The server also checks that chunk sizes add up to the file size.

@@ -3,6 +3,8 @@
 import os
 import shutil
 
+from brokenvault.common.constants import DEFAULT_CHUNK_SIZE
+
 from tests.helpers.chunks import tree_chunks, total_bytes
 from tests.helpers.tree import compare_trees, rand_bytes, sample_tree
 
@@ -170,14 +172,15 @@ def test_empty_folder_backup(vault, tmp_path):
 
 
 def test_default_chunk_size_roundtrip(vault, tmp_path):
-    """One backup with the real 512 KiB default."""
+    """One backup with the real default chunk size (256 KiB)."""
     src = tmp_path / "src"
     src.mkdir()
-    (src / "a.bin").write_bytes(rand_bytes(512 * 1024 * 2 + 1000, 5))
+    (src / "a.bin").write_bytes(rand_bytes(DEFAULT_CHUNK_SIZE * 2 + 1000, 5))
     result = vault.bv("backup", src)
     assert result.code == 0 and result.json["unique_chunks"] == 3
     status, version = vault.http("GET", "/v1/versions/V1")
-    assert version["chunker"] == {"algo": "fixed", "size": 524288}
+    assert version["chunker"] == {"algo": "fixed", "size": DEFAULT_CHUNK_SIZE}
+    assert DEFAULT_CHUNK_SIZE == 256 * 1024
     dest = tmp_path / "out"
     assert vault.bv("restore", "V1", dest).code == 0
     assert compare_trees(str(src), str(dest)) == []

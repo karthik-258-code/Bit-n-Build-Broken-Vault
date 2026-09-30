@@ -9,7 +9,7 @@ Source documents: `LLD.md` (how), `PRD_1.md` (what). The original brief PDF is n
 | Client-server app, separate programs, HTTP on loopback | `brokenvault.server`, `brokenvault.client` | done |
 | Files, nested folders, empty files, empty folders | scanner, manifest, restore | done |
 | Paths relative with `/`; reject absolute, `..`, duplicates | `common/paths.py`, `common/manifest.py` | done |
-| Repeatable chunking, 512 KiB fixed, empty files have no chunks | `client/chunker.py` | done |
+| Repeatable chunking, 256 KiB fixed, empty files have no chunks | `client/chunker.py` | done |
 | Same hash stored once; server recomputes hash | `server/chunk_store.py` | done |
 | Send only missing chunks | `missing` + `BackupRunner` | done |
 | Version complete only after all chunks exist and pass a hash check | `commit` | done |
@@ -53,3 +53,5 @@ Source documents: `LLD.md` (how), `PRD_1.md` (what). The original brief PDF is n
 - README team name and members are left as TODO; they are not in the design documents.
 - Brief PDF (`Participants_guide/`) read after the build: no conflict with the PRD or LLD found. README and `docs/architecture.md` now follow the organisers' templates. `Participants_guide/` is git-ignored (70 MB of sample ZIPs).
 - Organisers' sample check: V1 uploads 36,194,669 of 36,194,669 bytes; V2 uploads 524,347 of 36,194,728; both restores match their sources; verify healthy.
+- Default chunk size changed from 512 KiB to 256 KiB on the team's request after the sample check (uploaded chunk bytes is a tie-break). Still inside the brief's suggested 256 KiB to 1 MiB range; `--chunk-size` stays configurable. LLD D1 / 4.1 and PRD A1 updated to match.
+- Demo work folder moved from `./demo-work` to a new folder in the system temp directory: inside a OneDrive-synced folder the old work folder could not be deleted between runs, so a second demo run failed.

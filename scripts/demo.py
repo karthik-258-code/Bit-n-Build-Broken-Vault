@@ -3,7 +3,7 @@
 Runs the real server and client as subprocesses on a small generated dataset
 and prints every command with its output. Standard library only.
 
-    python scripts/demo.py            # work folder: ./demo-work (recreated each run)
+    python scripts/demo.py            # work folder: a new folder in the system temp directory
     python scripts/demo.py --keep     # leave the server data and restored folders for inspection
 """
 
@@ -14,13 +14,15 @@ import os
 import random
 import shutil
 import socket
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "src")
-CHUNK = 512 * 1024
+CHUNK = 256 * 1024
 
 
 def step(title):
@@ -52,6 +54,24 @@ def max_mtime_diff(a, b):
             right = os.path.join(b, os.path.relpath(left, a))
             worst = max(worst, abs(os.stat(left).st_mtime - os.stat(right).st_mtime))
     return worst
+
+
+def _force_remove(func, path, _exc):
+    os.chmod(path, stat.S_IWRITE)  # clear a read-only flag, then try once more
+    func(path)
+
+
+def remove_tree(path):
+    """Delete a folder; retry because a sync tool or virus scanner may hold items for a moment."""
+    for _ in range(20):
+        try:
+            shutil.rmtree(path, onerror=_force_remove)
+        except OSError:
+            pass
+        if not os.path.exists(path):
+            return True
+        time.sleep(0.25)
+    return False
 
 
 class Demo:
@@ -122,7 +142,7 @@ def build_dataset(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--work", default=os.path.join(REPO, "demo-work"))
+    parser.add_argument("--work", help="work folder (default: a new folder in the system temp directory)")
     parser.add_argument("--port", type=int, default=0, help="server port (default: a free port)")
     parser.add_argument("--keep", action="store_true", help="keep the work folder after the demo")
     args = parser.parse_args()
@@ -132,9 +152,14 @@ def main():
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
             port = s.getsockname()[1]
-    work = os.path.abspath(args.work)
-    shutil.rmtree(work, ignore_errors=True)
-    os.makedirs(work)
+    if args.work:
+        work = os.path.abspath(args.work)
+        if os.path.exists(work) and not remove_tree(work):
+            raise SystemExit(f"demo failed: cannot remove the old work folder {work}; delete it and run again")
+        os.makedirs(work)
+    else:
+        work = tempfile.mkdtemp(prefix="brokenvault-demo-")
+    print(f"work folder: {work}", flush=True)
     demo = Demo(work, port)
     data = os.path.join(work, "event-project")
 
@@ -219,8 +244,10 @@ def main():
         step("Demo complete: every check passed")
     finally:
         demo.stop_server()
-        if not args.keep:
-            shutil.rmtree(work, ignore_errors=True)
+        if args.keep:
+            print(f"kept: {work}", flush=True)
+        elif not remove_tree(work):
+            print(f"note: could not remove {work}; delete it by hand", flush=True)
     return 0
 
 

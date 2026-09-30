@@ -13,7 +13,7 @@
 
 | # | Decision | Reason |
 |---|---|---|
-| D1 | Fixed-size chunks, 512 KiB default, configurable per backup and recorded in the manifest | Simple, repeatable, in the suggested range; CDC left as a stretch hook |
+| D1 | Fixed-size chunks, 256 KiB default, configurable per backup and recorded in the manifest | Simple, repeatable, in the suggested range; CDC left as a stretch hook |
 | D2 | Chunk ID = SHA-256 hex of original bytes; server recomputes before accepting | Brief requirement; makes the server the authority |
 | D3 | Chunk files on disk in a content-addressed layout; **file existence on disk is the source of truth for "server has chunk"** | Damage (deleted/altered chunk) is then always visible to verify and to later backups |
 | D4 | SQLite (WAL, `synchronous=FULL`) for metadata: uploads, versions, entries, chunk references | Atomic multi-row commit; survives restart |
@@ -110,7 +110,7 @@ brokenvault/
 ### 4.1 Constants
 ```
 API_PREFIX        = "/v1"
-DEFAULT_CHUNK_SIZE= 512 * 1024
+DEFAULT_CHUNK_SIZE= 256 * 1024
 MAX_CHUNK_SIZE    = 4 * 1024 * 1024     # server rejects larger bodies
 MAX_MANIFEST_BYTES= 64 * 1024 * 1024
 HASH_RE           = ^[0-9a-f]{64}$
@@ -573,7 +573,7 @@ Every CLI error message states: what failed, the object (path, chunk, version or
 
 - Server handles concurrent requests via threads, but the product guarantees only one backup at a time; all state changes are in short SQLite transactions and per-hash publish locks.
 - Memory: client reads one chunk at a time; server streams 64 KiB blocks. Peak memory well under 100 MB regardless of dataset size.
-- Time (1 GB): hashing ~2–4 s on a laptop SSD for one scan; upload dominated by loopback throughput; commit re-hash adds one more read of distinct chunks. Sequential PUTs at 512 KiB keep overhead small (~2,000 requests).
+- Time (1 GB): hashing ~2–4 s on a laptop SSD for one scan; upload dominated by loopback throughput; commit re-hash adds one more read of distinct chunks. Sequential PUTs at 256 KiB keep overhead small (~4,000 requests).
 - Optimization hooks (post-core): parallel PUTs with a bounded thread pool; `--fast-commit`; caching `(path, size, mtime) → chunk list` on the client to avoid re-hashing unchanged files.
 
 ## 9. Testing plan

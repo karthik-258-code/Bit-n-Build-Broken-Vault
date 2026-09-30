@@ -127,7 +127,7 @@ The 1 GB scenario (T20) is excluded by default: `pytest -q -m slow` (set `BV_SLO
 
 ## Demo steps
 
-Automated, on a small generated dataset, with a check after each step (`--keep` leaves `./demo-work` for inspection):
+Automated, on a small generated dataset, with a check after each step (`--keep` leaves the work folder, printed at the start, for inspection):
 
 ```bash
 python scripts/demo.py
@@ -136,7 +136,7 @@ python scripts/demo.py
 By hand, with the organisers' sample (`brokenvault_sample_v1.zip` and `brokenvault_sample_v2.zip`, each extracted into its own folder) or any two states of a folder:
 
 1. Start the server. Back up version 1: `bv backup ./brokenvault_sample_v1`. Uploaded bytes equal the total.
-2. Back up version 2 and show reused and uploaded bytes: `bv backup ./brokenvault_sample_v2`, then `bv list`. On the sample, V2 has 36,194,728 total bytes and uploads 524,347.
+2. Back up version 2 and show reused and uploaded bytes: `bv backup ./brokenvault_sample_v2`, then `bv list`. On the sample, V2 has 36,194,728 total bytes and uploads 262,203.
 3. Interrupt another upload: `bv backup <changed folder> --stop-after-chunks 2` (or Ctrl-C). `bv list` shows no new version; `bv status <upload-id>` shows UNFINISHED. Stop the server and start it again.
 4. Continue, complete and restore: run the same `bv backup` command again; it continues the same upload ID. Then `bv restore V1 ./out1`, `bv restore V2 ./out2`, and compare each folder with its source.
 5. Change one byte of a file under `vault/chunks/`, delete another chunk file, and run `bv verify`. It lists each damaged chunk with every version and file path, repairs nothing, and exits with code 2.
@@ -145,7 +145,7 @@ By hand, with the organisers' sample (`brokenvault_sample_v1.zip` and `brokenvau
 
 See [`docs/architecture.md`](docs/architecture.md) for the design note, [`LLD.md`](LLD.md) for the full low-level design and [`PRD_1.md`](PRD_1.md) for the requirements. In short:
 
-- Fixed-size 512 KiB chunks; chunk ID = SHA-256 of the original bytes; empty files have zero chunks.
+- Fixed-size 256 KiB chunks; chunk ID = SHA-256 of the original bytes; empty files have zero chunks.
 - Chunk files are content-addressed on disk (`chunks/ab/<hash>`). A chunk exists when its file exists. Writes go to `tmp/`, are hash-checked and fsynced, then atomically renamed. An existing chunk file is never overwritten.
 - Metadata is in SQLite. Uploads and versions are separate tables; a version exists only as rows written inside one commit transaction, so unfinished work cannot appear in `list` or `restore`.
 - Commit re-hashes every chunk the version needs before that transaction.
