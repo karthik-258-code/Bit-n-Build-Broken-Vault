@@ -4,7 +4,7 @@ A client-server backup system for one folder tree. The client splits files into 
 
 ## Team
 
-- **Team name:** _TODO: fill in before submission_
+- **Team name:** All for one.exe
 - Member 1: _TODO_
 - Member 2: _TODO_
 - Member 3: _TODO_
