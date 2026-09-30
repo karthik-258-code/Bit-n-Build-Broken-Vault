@@ -64,7 +64,7 @@ class Vault:
         env["PYTHONIOENCODING"] = "utf-8"
         env["BV_SERVER"] = self.url
         env["BV_STATE_DIR"] = self.state_dir
-        env["BV_RETRY_DELAYS"] = "0.05,0.1,0.2"
+        env["BV_RETRY_DELAYS"] = "0.05,0.1"
         env.pop("BV_FAULT", None)
         env.update(extra or {})
         return env
