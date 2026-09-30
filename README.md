@@ -5,10 +5,10 @@ A client-server backup system for one folder tree. The client splits files into 
 ## Team
 
 - **Team name:** All for one.exe
-- Member 1: _TODO_
-- Member 2: _TODO_
-- Member 3: _TODO_
-- Member 4: _TODO_
+- Vashista Ch (team lead)
+- Aahan Ch
+- Karthik Ch
+- Dheeraj J
 
 ## Supported setup
 
