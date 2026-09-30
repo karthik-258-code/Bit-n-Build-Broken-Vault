@@ -12,9 +12,9 @@ A client-server backup system for one folder tree. The client splits files into 
 
 ## Supported setup
 
-- **Operating system:** Windows 11 (tested).
+- **Operating system:** Windows 11 (tested), or Docker (the server image was built and run; see "Run with Docker").
 - **Language:** Python 3.11 or newer.
-- **Required tools:** Python with `pip`; `pytest` for the tests. No Docker needed.
+- **Required tools:** Python with `pip`; `pytest` for the tests. Docker is optional.
 - The code uses only portable standard-library calls and POSIX-specific steps (directory fsync) are guarded, so Linux and macOS are expected to work, but they were not tested.
 - Client and server are separate programs that talk over HTTP (loopback by default). No internet or paid service is needed after setup.
 
@@ -56,12 +56,12 @@ docker compose exec brokenvault-server bv list --server http://localhost:8765
 Back up a folder, list completed versions, restore a version, verify stored data:
 
 ```
-python -m brokenvault.server --data-dir ./vault --port 8765   # start the system   (make server)
+python -m brokenvault.server --data-dir ./vault --port 8765   # start the system
 python -m brokenvault.client backup  ./sample                 # or: bv backup ./sample
 python -m brokenvault.client list
 python -m brokenvault.client restore V1 ./restored-v1
 python -m brokenvault.client verify
-pytest -q                                                      # run all tests      (make test)
+pytest -q                                                      # run all tests
 ```
 
 | Command | What it does |
@@ -72,6 +72,8 @@ pytest -q                                                      # run all tests  
 | `bv restore <version> <dest>` | Restore a version into an empty or not yet existing folder. |
 | `bv verify` | Check every chunk of every completed version. Repairs nothing. |
 | `bv status <upload-id>` | Show an upload: UNFINISHED or COMPLETE, chunks stored / needed. |
+
+A `Makefile` wraps the same commands (`make server`, `make test`, `make demo`) where the `make` tool is available; it is not installed with Windows by default.
 
 Every client command accepts `--server URL` (default `http://127.0.0.1:8765`, or the `BV_SERVER` variable) and `--json` for machine-readable output.
 
@@ -139,7 +141,13 @@ The 1 GB scenario (T20) is excluded by default: `pytest -q -m slow` (set `BV_SLO
 
 ## Demo steps
 
-Automated, on a small generated dataset, with a check after each step (`--keep` leaves the work folder, printed at the start, for inspection):
+One script runs the whole flow (start, backup, interrupt, restart, resume, restore, compare, damage, verify) on two folders you give it, printing every command with its output and a check after each step. Add `--pause` to wait for Enter before each step, `--keep` to keep the work folder:
+
+```bash
+python scripts/live_demo.py <version-1-folder> <version-2-folder>
+```
+
+The same flow on a small generated dataset, with no folders to prepare:
 
 ```bash
 python scripts/demo.py
