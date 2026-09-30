@@ -1,0 +1,10 @@
+services:
+  brokenvault-server:
+    build: .
+    ports:
+      - "8765:8765"
+    volumes:
+      - vault-data:/data
+
+volumes:
+  vault-data:

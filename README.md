@@ -39,6 +39,18 @@ python -m brokenvault.server --data-dir ./vault --port 8765
 
 The server is the only long-running part. Run the client commands below in a second terminal.
 
+## Run with Docker
+
+```bash
+docker compose up --build
+```
+
+This builds the image and starts the server on `http://localhost:8765`, with vault data persisted in the `vault-data` Docker volume. Run client commands from your host machine (install with `pip install -e .`, or use `PYTHONPATH=src python -m brokenvault.client ...`) pointed at `--server http://localhost:8765`, or exec into the running container:
+
+```bash
+docker compose exec brokenvault-server bv list --server http://localhost:8765
+```
+
 ## Commands
 
 Back up a folder, list completed versions, restore a version, verify stored data:
@@ -164,7 +176,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design note, [`LLD.md
 - No deletion of versions and no garbage collection; chunks of abandoned uploads stay in the store.
 - If the server crashes after a commit but before the client gets the answer, the version is complete, and rerunning the backup creates one more snapshot of the same content (0 uploaded bytes).
 - Chunk size limit 4 MiB; manifest size limit 64 MiB.
-- The stretch features in the PRD (content-defined chunking, parallel uploads, Docker, web page, partial restore, GC, compression) are not implemented. `--json` is implemented.
+- The stretch features in the PRD (content-defined chunking, parallel uploads, web page, partial restore, GC, compression) are not implemented. `--json` and a Docker setup for the server are implemented.
 
 ## Test hooks (off by default)
 
